@@ -2,15 +2,19 @@ package pscrap
 
 import (
 	"fmt"
+	"strings"
 	"net/url"
 	"net/http"
 	"io/ioutil"
+	"strconv"
 
 	"git.ccsas.biz/zilia_parse"
 
+	"github.com/gorilla/css/scanner"
 	"github.com/moovweb/gokogiri"
 	"github.com/moovweb/gokogiri/xpath"
 	"github.com/moovweb/gokogiri/html"
+	"github.com/moovweb/gokogiri/xml"
 )
 
 type Scrapper struct {
@@ -30,7 +34,7 @@ func (s *Scrapper) Scrap(url string, o *parse.Object) (*parse.Object, error) {
 	}
 
 	if o == nil {
-		o = &parse.Object{}
+		o = parse.NewObject()
 	}
 
 	if err := page.scrap(url, o); err != nil {
@@ -48,8 +52,10 @@ func (s *Scrapper) pageForUrl(url string) (*Page, error) {
 	return nil, fmt.Errorf("Failed to find suitable page scrapper")
 }
 
-func (s *Scrapper) AddPage(p *Page) {
-	s.pages = append(s.pages, p)
+func (s *Scrapper) AddPage(client *http.Client, matcher Matcher) *Page {
+	page := newPage(client, matcher)
+	s.pages = append(s.pages, page)
+	return page
 }
 
 type FieldPath []string
@@ -63,10 +69,14 @@ type Page struct {
 	client *http.Client
 	matcher Matcher
 	fields []*pObjectField
+	processors []Processor
 }
 
-func NewPage(client *http.Client, matcher Matcher) *Page {
-	page := Page{client, matcher, []*pObjectField{}}
+func newPage(client *http.Client, matcher Matcher) *Page {
+	if client == nil {
+		client = &http.Client{}
+	}
+	page := Page{client, matcher, []*pObjectField{}, []Processor{}}
 	return &page
 }
 
@@ -89,11 +99,15 @@ func (p *Page) scrap(url string, o *parse.Object) error {
 	defer doc.Free()
 
 	for _, field := range p.fields {
-		value, err := field.selector(doc)
+		value, err := field.selector(url, doc)
 		if err != nil {
 			return err
 		}
 		o.SetNested(field.path, value)
+	}
+
+	for _, processor := range p.processors {
+		processor(o)
 	}
 	return nil
 }
@@ -101,6 +115,10 @@ func (p *Page) scrap(url string, o *parse.Object) error {
 func (p *Page) AddField(path FieldPath, selector Selector) {
 	field := pObjectField{path, selector}
 	p.fields = append(p.fields, &field)
+}
+
+func (p *Page) AddProcessor(processor Processor) {
+	p.processors = append(p.processors, processor)
 }
 
 /**
@@ -130,35 +148,140 @@ func HostMatcher(host string) Matcher {
  *	selectors
  */
 
-type Selector func(doc *html.HtmlDocument) (interface{}, error)
+type Selector func(url string, doc *html.HtmlDocument) (interface{}, error)
 
-func XpathSelector(xs []string, sep string) Selector {
+type xpathSelectorApply func (match xml.Node, value interface{}) interface{}
+func xpathSelector(xs []string, apply xpathSelectorApply) Selector {
 	exprs := []*xpath.Expression{}
 	for _, x := range xs {
 		exprs = append(exprs, xpath.Compile(x))
 	}
-	return func (doc *html.HtmlDocument) (interface{}, error) {
-		value := ""
-		xdoc := xpath.NewXPath(doc.DocPtr())
-
+	return func (url string, doc *html.HtmlDocument) (interface{}, error) {
+		var value interface{}
 		for _, expr := range exprs {
-			err := xdoc.Evaluate(doc.Root().NodePtr(), expr)
+			matches, err := doc.Search(expr)
 			if err != nil {
 				return nil, err
 			}
 
-			res, err := xdoc.ResultAsString()
-			if err != nil {
-				return nil, err
+			for _, match := range matches {
+				value = apply(match, value)
 			}
 
-			if len(value) == 0 {
-				value = res
-			} else {
-				value = fmt.Sprintf("%s%s%s", value, sep, res)
-			}
 		}
 
 		return value, nil
 	}
 }
+
+func XpathStringSelector(xs []string, sep string) Selector {
+	selector := xpathSelector(xs, func (match xml.Node, value interface{}) interface{} {
+		if value == nil {
+			value = ""
+		}
+		vs := value.(string)
+		if len(vs) == 0 {
+			vs = match.Content()
+		} else {
+			vs = fmt.Sprintf("%s%s%s", vs, sep, match.Content())
+		}
+		return vs
+	})
+	return selector
+}
+
+func XpathStringArraySelector(xs []string) Selector {
+	selector := xpathSelector(xs, func (match xml.Node, value interface{}) interface{} {
+		if value == nil {
+			value = []string{}
+		}
+		vs := value.([]string)
+		vs = append(vs, match.Content())
+		return vs
+	})
+	return selector
+}
+
+func XpathNumberSelector(xs string) Selector {
+	selector := xpathSelector([]string{xs}, func (match xml.Node, value interface{}) interface{} {
+		if n, err := strconv.ParseFloat(match.Content(), 64); err == nil {
+			value = n
+		} else {
+			fmt.Println("Failed to parse Float in ", match.Content(), " reason ", err)
+		}
+		return value
+	})
+	return selector
+}
+
+/**
+ *	Selector Middlewares. TODO: make chaining function
+ */
+
+func CssProperty(name string, selector Selector) Selector {
+	return func (url string, doc *html.HtmlDocument) (interface{}, error) {
+		value, err := selector(url, doc)
+		if err != nil {
+			return value, err
+		}
+		if v, ok := value.(string); ok == true {
+			cssMap := CssToMap(v)
+			if cssValue, ok := cssMap[name]; ok == true {
+				return cssValue, nil
+			}
+			return nil, fmt.Errorf("Missing %s css property in %s", name, value)
+		}
+		return value, err
+	}
+}
+
+func StripBlanks(selector Selector) Selector {
+	return func (url string, doc *html.HtmlDocument) (interface{}, error) {
+		value, err := selector(url, doc)
+		if err != nil {
+			return value, err
+		}
+		
+		if v, ok := value.(string); ok == true {
+			return strings.TrimSpace(v), nil
+		} else if v, ok := value.([]string); ok == true {
+			for i, s := range v {
+				v[i] = strings.TrimSpace(s)
+			}
+			return v, nil
+		}
+
+		return value, err
+	}
+}
+
+/**
+ *	Processors
+ */
+
+type Processor func (o *parse.Object)
+
+// Misc
+
+func CssToMap(css string) map[string]string {
+	res := map[string]string{}
+	s := scanner.New(css)
+	key := ""
+	for {
+		token := s.Next()
+		if token.Type == scanner.TokenEOF || token.Type == scanner.TokenError {
+			break
+		}
+		if len(key) == 0 {
+			if token.Type == scanner.TokenIdent {
+				key = token.Value
+			}
+		} else if token.Type != scanner.TokenS && token.Type != scanner.TokenChar && token.Type != scanner.TokenComment {
+			res[key] = token.Value
+		} else if token.Type == scanner.TokenChar && token.Value == ";" {
+			key = ""
+		}
+	}
+	return res
+}
+

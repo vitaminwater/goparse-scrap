@@ -13,8 +13,8 @@ func seloger() {
 	scrapper := pscrap.NewScrapper()
 
 	client := &http.Client{}
-	page := pscrap.NewPage(client, pscrap.HostMatcher("www.seloger.com"))
-	scrapper.AddPage(page)
+	page := scrapper.AddPage(client, pscrap.HostMatcher("www.seloger.com"))
+	page.AddField(pscrap.FieldPath{"test",}, pscrap.XpathStringArraySelector([]string{"//*[@id=\"slider1\"]/li/img/@src"}))
 
 	if o, err := scrapper.Scrap(testpage, nil); err == nil {
 		fmt.Println(o)
@@ -24,13 +24,13 @@ func seloger() {
 }
 
 func lebonCoin() {
-	testpage := "http://www.leboncoin.fr/ventes_immobilieres/856922869.htm?ca=12_s"
+	testpage := "http://www.leboncoin.fr/ventes_immobilieres/815473274.htm?ca=12_s"
 
 	scrapper := pscrap.NewScrapper()
 
 	client := &http.Client{}
-	page := pscrap.NewPage(client, pscrap.HostMatcher("www.leboncoin.fr"))
-	scrapper.AddPage(page)
+	page := scrapper.AddPage(client, pscrap.HostMatcher("www.leboncoin.fr"))
+	page.AddField(pscrap.FieldPath{"test"}, pscrap.XpathStringArraySelector([]string{"//meta[@itemprop=\"image\"]/@content"}))
 
 	if o, err := scrapper.Scrap(testpage, nil); err == nil {
 		fmt.Println(o)
@@ -40,6 +40,6 @@ func lebonCoin() {
 }
 
 func main() {
-	seloger()
+	//seloger()
 	lebonCoin()
 }
