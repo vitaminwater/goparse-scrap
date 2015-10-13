@@ -149,3 +149,29 @@ You can do this by creating a `Processor` object, as usual, a
 as parameter.
 You add a `Processor` by calling the `AddProcessor` method on the `Page`
 object, all processors are then called after each successful scrapings.
+
+Save to parse
+===
+
+The link to parse.com is done by initializing your own object to pass to
+the `Scrapp` method.
+
+Instead of passing `nil` as the second argument, you pass it a
+`ClassObject` from [goparse](https://github.com/vitaminwater/goparse).
+So based on previous examples, we will end up with:
+
+```
+o := goparse.NewClassObject('Address')
+// the host of this page is www.seloger.com so our page will catch it
+testpage := "http://www.seloger.com/annonces/achat/appartement/paris-1er-75/101834495.htm?cp=75001&idtt=2&idtypebien=1&listing-listpg=4&tri=d_dt_crea&bd=Li_LienAnn_1"
+
+if o, err := scrapper.Scrap(testpage, nil); err == nil {
+  fmt.Println(o)
+} else {
+  panic(err)
+}
+
+// this is where we save the object to parse
+o.Save()
+
+```
