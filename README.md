@@ -94,7 +94,7 @@ if o, err := scrapper.Scrap(testpage, nil); err == nil {
 In this example, the returned object `o` has a `test` field which is a `[]string`
 of the results of the XPath found on the page.
 
-The `Object` type is defined in the [goparse](github.com/vitaminwater/goparse) project,
+The `Object` type is defined in the [goparse](https://github.com/vitaminwater/goparse) project,
 further documentation can be found there.
 
 Middlewares
