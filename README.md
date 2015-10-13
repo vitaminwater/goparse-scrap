@@ -161,11 +161,14 @@ Instead of passing `nil` as the second argument, you pass it a
 So based on previous examples, we will end up with:
 
 ```
+
+// add this line
 o := goparse.NewClassObject('Address')
-// the host of this page is www.seloger.com so our page will catch it
+
 testpage := "http://www.seloger.com/annonces/achat/appartement/paris-1er-75/101834495.htm?cp=75001&idtt=2&idtypebien=1&listing-listpg=4&tri=d_dt_crea&bd=Li_LienAnn_1"
 
-if o, err := scrapper.Scrap(testpage, nil); err == nil {
+// pass o to the Scrap method, instead of nil
+if _, err := scrapper.Scrap(testpage, o); err == nil {
   fmt.Println(o)
 } else {
   panic(err)
