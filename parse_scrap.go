@@ -2,19 +2,19 @@ package pscrap
 
 import (
 	"fmt"
-	"strings"
-	"net/url"
-	"net/http"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
-	"git.ccsas.biz/zilia_parse"
+	"github.com/vitaminwater/goparse"
 
 	"github.com/gorilla/css/scanner"
 	"github.com/moovweb/gokogiri"
-	"github.com/moovweb/gokogiri/xpath"
 	"github.com/moovweb/gokogiri/html"
 	"github.com/moovweb/gokogiri/xml"
+	"github.com/moovweb/gokogiri/xpath"
 )
 
 type Scrapper struct {
@@ -61,14 +61,14 @@ func (s *Scrapper) AddPage(client *http.Client, matcher Matcher) *Page {
 type FieldPath []string
 
 type pObjectField struct {
-	path FieldPath
+	path     FieldPath
 	selector Selector
 }
 
 type Page struct {
-	client *http.Client
-	matcher Matcher
-	fields []*pObjectField
+	client     *http.Client
+	matcher    Matcher
+	fields     []*pObjectField
 	processors []Processor
 }
 
@@ -128,14 +128,14 @@ func (p *Page) AddProcessor(processor Processor) {
 type Matcher func(string) bool
 
 func RegexpMatcher(expr string) Matcher {
-	return func (url string) bool {
+	return func(url string) bool {
 		return false
 	}
 }
 
 func HostMatcher(host string) Matcher {
-	return func (rawUrl string) bool {
-		u, err := url.Parse(rawUrl)	
+	return func(rawUrl string) bool {
+		u, err := url.Parse(rawUrl)
 		if err != nil {
 			fmt.Println(err)
 			return false
@@ -150,13 +150,14 @@ func HostMatcher(host string) Matcher {
 
 type Selector func(url string, doc *html.HtmlDocument) (interface{}, error)
 
-type xpathSelectorApply func (match xml.Node, value interface{}) interface{}
+type xpathSelectorApply func(match xml.Node, value interface{}) interface{}
+
 func xpathSelector(xs []string, apply xpathSelectorApply) Selector {
 	exprs := []*xpath.Expression{}
 	for _, x := range xs {
 		exprs = append(exprs, xpath.Compile(x))
 	}
-	return func (url string, doc *html.HtmlDocument) (interface{}, error) {
+	return func(url string, doc *html.HtmlDocument) (interface{}, error) {
 		var value interface{}
 		for _, expr := range exprs {
 			matches, err := doc.Search(expr)
@@ -175,7 +176,7 @@ func xpathSelector(xs []string, apply xpathSelectorApply) Selector {
 }
 
 func XpathStringSelector(xs []string, sep string) Selector {
-	selector := xpathSelector(xs, func (match xml.Node, value interface{}) interface{} {
+	selector := xpathSelector(xs, func(match xml.Node, value interface{}) interface{} {
 		if value == nil {
 			value = ""
 		}
@@ -191,7 +192,7 @@ func XpathStringSelector(xs []string, sep string) Selector {
 }
 
 func XpathStringArraySelector(xs []string) Selector {
-	selector := xpathSelector(xs, func (match xml.Node, value interface{}) interface{} {
+	selector := xpathSelector(xs, func(match xml.Node, value interface{}) interface{} {
 		if value == nil {
 			value = []string{}
 		}
@@ -203,7 +204,7 @@ func XpathStringArraySelector(xs []string) Selector {
 }
 
 func XpathNumberSelector(xs string) Selector {
-	selector := xpathSelector([]string{xs}, func (match xml.Node, value interface{}) interface{} {
+	selector := xpathSelector([]string{xs}, func(match xml.Node, value interface{}) interface{} {
 		if n, err := strconv.ParseFloat(match.Content(), 64); err == nil {
 			value = n
 		} else {
@@ -219,7 +220,7 @@ func XpathNumberSelector(xs string) Selector {
  */
 
 func CssProperty(name string, selector Selector) Selector {
-	return func (url string, doc *html.HtmlDocument) (interface{}, error) {
+	return func(url string, doc *html.HtmlDocument) (interface{}, error) {
 		value, err := selector(url, doc)
 		if err != nil {
 			return value, err
@@ -236,12 +237,12 @@ func CssProperty(name string, selector Selector) Selector {
 }
 
 func StripBlanks(selector Selector) Selector {
-	return func (url string, doc *html.HtmlDocument) (interface{}, error) {
+	return func(url string, doc *html.HtmlDocument) (interface{}, error) {
 		value, err := selector(url, doc)
 		if err != nil {
 			return value, err
 		}
-		
+
 		if v, ok := value.(string); ok == true {
 			return strings.TrimSpace(v), nil
 		} else if v, ok := value.([]string); ok == true {
@@ -259,7 +260,7 @@ func StripBlanks(selector Selector) Selector {
  *	Processors
  */
 
-type Processor func (o *parse.Object)
+type Processor func(o *parse.Object)
 
 // Misc
 
@@ -284,4 +285,3 @@ func CssToMap(css string) map[string]string {
 	}
 	return res
 }
-

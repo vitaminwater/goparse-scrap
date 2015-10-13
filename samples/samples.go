@@ -1,10 +1,10 @@
 package main
 
 import (
-	"net/http"
 	"fmt"
+	"net/http"
 
-	"git.ccsas.biz/parse_scrap"
+	"github.com/vitaminwater/parse-scrap"
 )
 
 func seloger() {
@@ -14,7 +14,7 @@ func seloger() {
 
 	client := &http.Client{}
 	page := scrapper.AddPage(client, pscrap.HostMatcher("www.seloger.com"))
-	page.AddField(pscrap.FieldPath{"test",}, pscrap.XpathStringArraySelector([]string{"//*[@id=\"slider1\"]/li/img/@src"}))
+	page.AddField(pscrap.FieldPath{"test"}, pscrap.XpathStringArraySelector([]string{"//*[@id=\"slider1\"]/li/img/@src"}))
 
 	if o, err := scrapper.Scrap(testpage, nil); err == nil {
 		fmt.Println(o)
