@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/vitaminwater/parse-scrap"
+	"github.com/vitaminwater/goparse-scrap"
 )
 
 func seloger() {
