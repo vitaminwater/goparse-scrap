@@ -150,7 +150,7 @@ func HostMatcher(host string) Matcher {
 
 type Selector func(url string, doc *html.HtmlDocument) (interface{}, error)
 
-type xpathSelectorApply func(match xml.Node, value interface{}) interface{}
+type xpathSelectorApply func(match string, value interface{}) interface{}
 
 func xpathSelector(xs []string, apply xpathSelectorApply) Selector {
 	exprs := []*xpath.Expression{}
@@ -160,13 +160,28 @@ func xpathSelector(xs []string, apply xpathSelectorApply) Selector {
 	return func(url string, doc *html.HtmlDocument) (interface{}, error) {
 		var value interface{}
 		for _, expr := range exprs {
-			matches, err := doc.Search(expr)
+			matches, err := doc.EvalXPath(expr, nil)
 			if err != nil {
 				return nil, err
 			}
 
-			for _, match := range matches {
-				value = apply(match, value)
+			if nodeset, ok := matches.([]xml.Node); ok == true {
+				for _, node := range nodeset {
+					value = apply(node.Content(), value)
+				}
+			} else {
+				switch match := matches.(type) {
+				case float64:
+					value = apply(strconv.FormatFloat(match, 'f', 10, 64), value)
+				case bool:
+					if match {
+						value = apply("true", value)
+					} else {
+						value = apply("false", value)
+					}
+				case string:
+					value = apply(match, value)
+				}
 			}
 
 		}
@@ -176,39 +191,35 @@ func xpathSelector(xs []string, apply xpathSelectorApply) Selector {
 }
 
 func XpathStringSelector(xs []string, sep string) Selector {
-	selector := xpathSelector(xs, func(match xml.Node, value interface{}) interface{} {
+	selector := xpathSelector(xs, func(match string, value interface{}) interface{} {
 		if value == nil {
-			value = ""
+			return match
 		}
 		vs := value.(string)
-		if len(vs) == 0 {
-			vs = match.Content()
-		} else {
-			vs = fmt.Sprintf("%s%s%s", vs, sep, match.Content())
-		}
+		vs = fmt.Sprintf("%s%s%s", vs, sep, match)
 		return vs
 	})
 	return selector
 }
 
 func XpathStringArraySelector(xs []string) Selector {
-	selector := xpathSelector(xs, func(match xml.Node, value interface{}) interface{} {
+	selector := xpathSelector(xs, func(match string, value interface{}) interface{} {
 		if value == nil {
-			value = []string{}
+			return []interface{}{match}
 		}
-		vs := value.([]string)
-		vs = append(vs, match.Content())
+		vs := value.([]interface{})
+		vs = append(vs, match)
 		return vs
 	})
 	return selector
 }
 
 func XpathNumberSelector(xs string) Selector {
-	selector := xpathSelector([]string{xs}, func(match xml.Node, value interface{}) interface{} {
-		if n, err := strconv.ParseFloat(match.Content(), 64); err == nil {
+	selector := xpathSelector([]string{xs}, func(match string, value interface{}) interface{} {
+		if n, err := strconv.ParseFloat(match, 64); err == nil {
 			value = n
 		} else {
-			fmt.Println("Failed to parse Float in ", match.Content(), " reason ", err)
+			fmt.Println("Failed to parse Float in ", match, " reason ", err)
 		}
 		return value
 	})
@@ -245,9 +256,11 @@ func StripBlanks(selector Selector) Selector {
 
 		if v, ok := value.(string); ok == true {
 			return strings.TrimSpace(v), nil
-		} else if v, ok := value.([]string); ok == true {
+		} else if v, ok := value.([]interface{}); ok == true {
 			for i, s := range v {
-				v[i] = strings.TrimSpace(s)
+				if s, ok := s.(string); ok == true {
+					v[i] = strings.TrimSpace(s)
+				}
 			}
 			return v, nil
 		}
